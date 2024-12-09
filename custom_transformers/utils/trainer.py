@@ -55,7 +55,7 @@ class Trainer:
             # Track metrics
             self.running_loss.append(loss.item())
 
-            self.learning_rates.append(self.optimizer.param_groups[0]["lr"])
+            self.learning_rates.append([param_group['lr'] for param_group in self.optimizer.param_groups])
 
             # Update progress bar
             progress_bar.set_postfix(loss=loss.item(), next_lr=self.learning_rates[-1])
