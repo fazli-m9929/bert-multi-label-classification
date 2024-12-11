@@ -1,14 +1,16 @@
 import psycopg2
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from typing import Dict, List, Tuple
 from ast import literal_eval
 from transformers import AutoTokenizer
+from collections import Counter
+
 
 class SQLDataset(Dataset):
     def __init__(
             self,
-            pretrained_model_name_or_path: str,
+            tokenizer: AutoTokenizer,
             connection_params: Dict[str, str], 
             num_classes: int
         ):
@@ -16,7 +18,7 @@ class SQLDataset(Dataset):
         Initializes the SQLDataset by establishing a connection to the database and setting up the tokenizer.
         
         Args:
-            pretrained_model_name_or_path (str): The path or name of the pretrained model for tokenization.
+            tokenizer (AutoTokenizer): the pretrained model's tokenizer.
             connection_params (Dict[str, str]): Dictionary containing the database connection parameters.
                 The user should provide a dictionary like the following:
                 
@@ -32,7 +34,7 @@ class SQLDataset(Dataset):
         self.num_classes = num_classes
 
         # Initialize the tokenizer using a pretrained model
-        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+        self.tokenizer = tokenizer
 
         # Store the connection parameters
         self.connection_params = connection_params
@@ -43,13 +45,72 @@ class SQLDataset(Dataset):
 
         # Define and execute the id_query to fetch all valid IDs
         self.id_query = """
-            SELECT id 
+            SELECT id, labels2
             FROM dbo.activity 
             WHERE labels2 IS NOT NULL AND labels2 NOT LIKE '%[]%'
         """
         # Execute the query and store the results in a dictionary mapping index to db_id
         self.cursor.execute(self.id_query)
-        self.id_map = {i: row[0] for i, row in enumerate(self.cursor.fetchall())}
+        rows = self.cursor.fetchall()
+
+         # Map IDs and parse labels
+        self.id_map = {i: row[0] for i, row in enumerate(rows)}
+        labels = [literal_eval(row[1]) for row in rows]
+
+        # Compute class weights
+        self.scaled_class_weights = self._compute_class_weights(labels)
+
+    @staticmethod
+    def scale_to_range(x: torch.Tensor, a: float, b: float) -> torch.Tensor:
+        """
+        Scales a tensor from the range [0, 1] to a specified range [a, b].
+
+        Args:
+            x (torch.Tensor): Input tensor with values in the range [0, 1].
+            a (float): The lower bound of the target range.
+            b (float): The upper bound of the target range.
+
+        Returns:
+            torch.Tensor: Tensor scaled to the range [a, b].
+        """
+        return x * (b - a) + a
+
+    def _compute_class_weights(self, labels: list) -> torch.Tensor:
+        """
+        Computes scaled class weights based on label frequency for multi-label classification.
+
+        Args:
+            labels (list): A list of lists, where each inner list contains labels for a sample.
+
+        Returns:
+            torch.Tensor: A tensor containing the scaled class weights for each label.
+        """
+        # Flatten the list to count occurrences of each label
+        flat_labels = [label for sublist in labels for label in sublist]
+        label_counts = Counter(flat_labels)
+
+        # Total number of samples
+        total_samples = sum(label_counts.values())
+
+        # Compute class weights as the inverse of label frequency
+        class_weights = {label: total_samples / count for label, count in label_counts.items()}
+
+        # Normalize weights
+        max_weight = max(class_weights.values())
+        class_weights = {label: weight / max_weight for label, weight in class_weights.items()}
+
+        # Initialize class weights tensor
+        class_weights_tensor = torch.zeros(self.num_classes, dtype=torch.float32)
+        for label, weight in class_weights.items():
+            class_weights_tensor[label] = weight
+
+        # Apply log transformation and scaling
+        log_scaled_weights = torch.log(class_weights_tensor + 1e-10)  # Avoid log(0)
+        log_scaled_weights = (log_scaled_weights - log_scaled_weights.min()) / (log_scaled_weights.max() - log_scaled_weights.min())
+
+        # Scale weights from [0, 1] to [1, 10]
+        return self.scale_to_range(log_scaled_weights, 1, 10)
+
 
     def __len__(self):
         """
