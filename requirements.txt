@@ -1,0 +1,8 @@
+torch
+transformers
+psycopg2-binary
+tqdm
+torchvision
+matplotlib
+python-dotenv
+scikit-learn
