@@ -78,7 +78,7 @@ dataset = SQLDataset(
 
 First, import the necessary components and set up the dataset:
 
-~~~python
+```python
 from custom_transformers import (
     ModifiedBertForSequenceClassification,
     SQLDataset,
@@ -98,11 +98,11 @@ test_dataset = Subset(dataset, test_indices)
 
 train_loader = DataLoader(train_dataset, 32, shuffle=True, collate_fn=dataset.collate_fn)
 test_loader = DataLoader(test_dataset, 32, shuffle=True, collate_fn=dataset.collate_fn)
-~~~
+```
 
 Next, set up the optimizer with frozen and unfrozen layers, and define the custom loss function:
 
-~~~python
+```python
 # Freeze certain layers and set learning rates for others
 frozen_params, unfrozen_params = [], []
 for name, param in model.named_parameters():
@@ -130,11 +130,11 @@ scheduler = get_scheduler(
     num_warmup_steps=warmup_steps,
     num_training_steps=num_training_steps
 )
-~~~
+```
 
 Finally, initialize the trainer and start training:
 
-~~~python
+```python
 # Set up and train the model
 trainer = Trainer(
     model,
@@ -144,14 +144,12 @@ trainer = Trainer(
     train_loader,
     test_loader
 )
-~~~
+
+trainer.fit(num_epochs)
+```
 
 This setup will train the model for 20 epochs, using a custom focal loss and learning rate scheduling with warm-up.
 
 ## Contributing
 
 If you find any issues or want to contribute improvements to the project, feel free to open an issue or submit a pull request.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
