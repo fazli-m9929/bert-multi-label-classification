@@ -1,8 +1,13 @@
 torch
+torchvision
+torchaudio
+torchinfo
 transformers
+accelerate
 psycopg2-binary
 tqdm
-torchvision
 matplotlib
 python-dotenv
 scikit-learn
+ipywidgets
+jupyter

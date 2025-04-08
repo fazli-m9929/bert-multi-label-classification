@@ -45,15 +45,15 @@ class SQLDataset(Dataset):
 
         # Define and execute the id_query to fetch all valid IDs
         self.id_query = """
-            SELECT id, labels2
+            SELECT id, labels3
             FROM dbo.activity 
-            WHERE labels2 IS NOT NULL AND labels2 NOT LIKE '%[]%'
+            WHERE labels3 IS NOT NULL AND labels3 NOT LIKE '%[]%'
         """
         # Execute the query and store the results in a dictionary mapping index to db_id
         self.cursor.execute(self.id_query)
         rows = self.cursor.fetchall()
 
-         # Map IDs and parse labels
+        # Map IDs and parse labels
         self.id_map = {i: row[0] for i, row in enumerate(rows)}
         labels = [literal_eval(row[1]) for row in rows]
 
@@ -88,6 +88,8 @@ class SQLDataset(Dataset):
         # Flatten the list to count occurrences of each label
         flat_labels = [label for sublist in labels for label in sublist]
         label_counts = Counter(flat_labels)
+        
+        # self.test = label_counts
 
         # Total number of samples
         total_samples = sum(label_counts.values())
@@ -142,10 +144,10 @@ class SQLDataset(Dataset):
             ids (List[int]): List of database IDs to fetch data for.
         
         Returns:
-            list: Data rows fetched from the database. Each row contains the 'companyactivity' text and 'labels2'.
+            list: Data rows fetched from the database. Each row contains the 'companyactivity' text and 'labels3'.
         """
         # Formulate the SQL query to fetch the required data for the given batch of IDs
-        query = f"SELECT companyactivity, labels2 FROM dbo.activity WHERE id IN ({', '.join(['%s'] * len(ids))})"
+        query = f"SELECT companyactivity, labels3 FROM dbo.activity WHERE id IN ({', '.join(['%s'] * len(ids))})"
         # Execute the query
         self.cursor.execute(query, tuple(ids))
         return self.cursor.fetchall()
