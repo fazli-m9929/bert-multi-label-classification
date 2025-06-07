@@ -4,9 +4,30 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch import nn
 import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+try:
+    # Check if running in Jupyter notebook
+    shell = get_ipython().__class__.__name__ # type: ignore
+    if shell == 'ZMQInteractiveShell':
+        from tqdm.notebook import tqdm  # Jupyter notebook
+    else:
+        from tqdm import tqdm  # Other shells
+except NameError:
+    # Probably standard Python interpreter
+    from tqdm import tqdm
+
 
 class Trainer:
+    """
+    Trainer class for managing training and validation loops of a PyTorch model.
+
+    Args:
+        model (PreTrainedModel): Huggingface Transformers model.
+        optimizer (Optimizer): Optimizer for training.
+        scheduler (LambdaLR): Learning rate scheduler.
+        loss_fn (nn.Module): Loss function to optimize.
+        train_loader (DataLoader): DataLoader for training dataset.
+        val_loader (DataLoader): DataLoader for validation dataset, can be None.
+    """
     def __init__(
             self,
             model: PreTrainedModel,
@@ -31,16 +52,23 @@ class Trainer:
         self.learning_rates = []
 
     def train_epoch(self):
+        """
+        Run one training epoch over train_loader with backpropagation.
+        Tracks batch loss and learning rate for monitoring.
+        """
         self.model.train()
-        progress_bar = tqdm(self.train_loader, desc="Training", leave=False)
+        progress_bar = tqdm(self.train_loader, desc="Training", leave=False, position=1)
 
         self.running_loss = []
 
         for batch in progress_bar:
             batch = batch.to(self.device)
 
-            input_ids, attention_mask, label = batch["input_ids"], batch["attention_mask"], batch["labels"]
-
+            # Unpack inputs
+            input_ids = batch["input_ids"]
+            attention_mask = batch["attention_mask"]
+            label = batch["labels"]
+            
             # Forward pass
             outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
             logits = outputs["logits"]
@@ -61,13 +89,17 @@ class Trainer:
             progress_bar.set_postfix(loss=loss.item(), next_lr=self.learning_rates[-1])
 
     def validate_epoch(self):
+        """
+        Run validation over val_loader without gradient updates.
+        Returns average validation loss for the epoch.
+        """
         if self.val_loader is None:
             return None
 
         self.model.eval()
         val_loss = []
 
-        progress_bar = tqdm(self.val_loader, desc="Validation", leave=False)
+        progress_bar = tqdm(self.val_loader, desc="Validation", leave=False, position=1)
 
         with torch.no_grad():
             for batch in progress_bar:
@@ -87,16 +119,16 @@ class Trainer:
         return avg_val_loss
     
     def fit(self, num_epochs):
-        for epoch in range(num_epochs):
-            epoch +=1
-            tqdm.write(f"Epoch {epoch: 3d}/{num_epochs}")
+        """
+        Run full training and validation for specified number of epochs.
+        Prints epoch summary with training and validation losses.
+        """
+        epoch_bar = tqdm(range(1, num_epochs + 1), desc="Epochs", position=0)
+        for epoch in epoch_bar:
             self.train_epoch()
             self.losses.append(self.running_loss)
 
             train_loss = torch.tensor(self.running_loss).mean().item()
             val_loss = self.validate_epoch()
 
-            tqdm.write(f"Training Loss: {train_loss:.4f}")
-            if val_loss is not None:
-                tqdm.write(f"Validation Loss: {val_loss:.4f}")
-            tqdm.write('')
+            epoch_bar.set_postfix(train_loss=train_loss, val_loss=val_loss if val_loss is not None else "-")
