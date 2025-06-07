@@ -56,6 +56,12 @@ class SQLDataset(Dataset):
         # Map IDs and parse labels
         self.id_map = {i: row[0] for i, row in enumerate(rows)}
         labels = [literal_eval(row[1]) for row in rows]
+        
+        one_hot_tensor = torch.zeros((len(labels), num_classes), dtype=torch.float32)
+        for i, row in enumerate(labels):
+            one_hot_tensor[i, row] = 1.0
+        
+        self.proportion_zeros = (one_hot_tensor == 0).sum().item() / one_hot_tensor.numel()
 
         # Compute class weights
         self.scaled_class_weights = self._compute_class_weights(labels)
