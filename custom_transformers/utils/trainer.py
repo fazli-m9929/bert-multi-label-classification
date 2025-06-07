@@ -4,16 +4,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch import nn
 import torch
 from torch.utils.data import DataLoader
-try:
-    # Check if running in Jupyter notebook
-    shell = get_ipython().__class__.__name__ # type: ignore
-    if shell == 'ZMQInteractiveShell':
-        from tqdm.notebook import tqdm  # Jupyter notebook
-    else:
-        from tqdm import tqdm  # Other shells
-except NameError:
-    # Probably standard Python interpreter
-    from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 class Trainer:
