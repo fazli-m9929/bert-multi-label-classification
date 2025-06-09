@@ -7,6 +7,14 @@ from ..inference import (
 )
 import pandas as pd
 
+# Page sidebar description
+description = (
+    "This page allows you to classify a company's domain of activity based on free-text descriptions. "
+    "A fine-tuned BERT model performs multi-label classification and outputs the most likely industry groups, "
+    "as well as their parent divisions and sections using a hierarchical probability scheme."
+    "<br><br>💡 Paste a description and click **Predict** to see the top categories."
+)
+
 # Cache the tokenizer and model so they're loaded only once
 @st.cache_resource
 def load_resources():
@@ -53,10 +61,10 @@ def run():
         # Slider to control prediction threshold
         threshold = st.slider(
             "Prediction Threshold",
-            min_value=0.0,
-            max_value=1.0,
+            min_value=0.2,
+            max_value=0.8,
             value=0.5,
-            step=0.01,
+            step=0.05,
             label_visibility="collapsed"
         )
     with col2:
@@ -81,12 +89,17 @@ def run():
             st.subheader("Predicted Labels")
             section_probs, division_probs, group_probs = compute_hierarchy_probs(predictions)
             
+            st.write("Sections:")
             st.write(
                 pd.merge(section_map, section_probs, on="Id", how="right").set_index('Id')
             )
+            
+            st.write("Divisions:")
             st.write(
                 pd.merge(division_map, division_probs, on="Id", how="right").set_index('Id')
             )
+            
+            st.write("Groups:")
             st.write(
                 pd.merge(group_map, group_probs, on="Id", how="right").set_index('Id')
             )
