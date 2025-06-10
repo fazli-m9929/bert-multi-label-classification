@@ -3,9 +3,9 @@ import streamlit as st
 # Page sidebar description
 description = (
     "Welcome to the Company Labeler App. "
-    "<br>This tool demonstrates a multi-page system for classifying company activities using a fine-tuned BERT model. "
-    "<br>Use the sidebar to explore different features, including the main classifier demo that maps descriptions to industry labels based on hierarchical taxonomy."
-    "<br><br>📌 Start by selecting a section from the navigation menu."
+    "<br><br>This tool showcases a multi-page platform for classifying company activity descriptions using a fine-tuned BERT model. "
+    "<br>It maps free-text inputs to standardized industry labels based on a hierarchical taxonomy. "
+    "<br><br>📌 Use the sidebar to navigate through available features and demos."
 )
 
 def run():
@@ -23,7 +23,6 @@ def run():
         - Run the classifier demo
         - View other components (coming soon)
         
-        ---
     """)
 
     # Optional expandable help/instructions section

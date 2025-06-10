@@ -1,10 +1,10 @@
 import streamlit as st
 from ..inference import (
-    load_model,
     predict_sorted,
     compute_hierarchy_probs,
     section_map, division_map, group_map
 )
+from ..utils import load_resources
 import pandas as pd
 
 # Page sidebar description
@@ -12,19 +12,8 @@ description = (
     "This page allows you to classify a company's domain of activity based on free-text descriptions. "
     "A fine-tuned BERT model performs multi-label classification and outputs the most likely industry groups, "
     "as well as their parent divisions and sections using a hierarchical probability scheme."
-    "<br><br>💡 Paste a description and click **Predict** to see the top categories."
+    "<br><br>💡 Paste a description and click <strong>Predict</strong> to see the top categories."
 )
-
-# Cache the tokenizer and model so they're loaded only once
-@st.cache_resource
-def load_resources():
-    """
-    Load and cache the tokenizer and model to avoid reloading on every rerun.
-
-    Returns:
-        tuple: (tokenizer, model)
-    """
-    return load_model()
 
 def run():
     """
@@ -45,7 +34,7 @@ def run():
         <style>
         textarea {
             direction: rtl;
-            font-family: monospace;
+            text-align: justify;
         }
         </style>
         """,
@@ -87,20 +76,22 @@ def run():
             st.info("No labels passed the threshold.")
         else:
             st.subheader("Predicted Labels")
-            section_probs, division_probs, group_probs = compute_hierarchy_probs(predictions)
+            
+            with st.spinner("Generating Results..."):
+                section_probs, division_probs, group_probs, _ = compute_hierarchy_probs(predictions)
             
             st.write("Sections:")
-            st.write(
+            st.dataframe(
                 pd.merge(section_map, section_probs, on="Id", how="right").set_index('Id')
             )
             
             st.write("Divisions:")
-            st.write(
+            st.dataframe(
                 pd.merge(division_map, division_probs, on="Id", how="right").set_index('Id')
             )
             
             st.write("Groups:")
-            st.write(
+            st.dataframe(
                 pd.merge(group_map, group_probs, on="Id", how="right").set_index('Id')
             )
             

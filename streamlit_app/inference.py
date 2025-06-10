@@ -21,6 +21,10 @@ division_map["Id"] = division_map["Id"].apply(lambda x: x[:3])
 division_map = division_map[["Id", "Section", "Division"]].sort_values(by='Id').reset_index(drop=True)
 
 label_dict = group_map['Id'].to_dict()
+label_dict_inv = {v: k for k, v in label_dict.items()}
+section_dict = section_map.set_index('Id').to_dict()['Section']
+division_dict = division_map.set_index('Id').to_dict()['Division']
+group_dict = group_map.set_index('Id').to_dict()['Group']
 
 @torch.no_grad()
 def load_model() -> Tuple[AutoTokenizer, ModifiedBertForSequenceClassification]:
@@ -61,7 +65,7 @@ def predict_sorted(
     outputs = model(**tokens)
     logits = outputs.logits.squeeze()
     
-    probs = torch.sigmoid(logits).cpu() - 0.2 # A little offset to avoid false positives
+    probs = torch.sigmoid(logits).cpu() # - 0.2 # A little offset to avoid false positives
     labels = torch.argwhere(probs > threshold).view(-1)
 
     # Create sorted list of (label, prob, binary prediction)
@@ -73,19 +77,24 @@ def predict_sorted(
 
     return sorted_output
 
-def compute_hierarchy_probs(predictions: List[Tuple[str, float]]) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def noisy_or(probs: List[float]) -> float:
+    return 1 - prod([1 - p for p in probs]) if probs else 0.0
+
+def compute_hierarchy_probs(predictions: List[Tuple[str, float]], return_all = True) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Compute hierarchical Noisy-OR probabilities for Section, Division, and Group levels
     based on prediction probabilities for individual groups.
 
     Args:
         predictions (List[Tuple[str, float]]): List of tuples containing (Group ID, probability).
+        return_all (bool): A flag to generate detailed df.
 
     Returns:
         Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
             - section_probs: DataFrame with columns ["Section", "Prob"]
             - division_probs: DataFrame with columns ["Division", "Prob"]
             - group_probs: DataFrame with columns ["Group", "Prob"]
+            - pred_df: the pred_df itself if needed
     """
 
     # Convert input list to DataFrame
@@ -94,33 +103,34 @@ def compute_hierarchy_probs(predictions: List[Tuple[str, float]]) -> Tuple[pd.Da
     # Derive hierarchy levels from Group ID
     pred_df["Section"] = pred_df["Group"].str.slice(0, 1)
     pred_df["Division"] = pred_df["Group"].str.slice(0, 3)
+    
+    pred_df = pred_df[['Section', "Division", 'Group', 'Prob']]
 
-    # Noisy-OR aggregation function
-    def noisy_or(probs: List[float]) -> float:
-        return 1 - prod([1 - p for p in probs]) if probs else 0.0
+    if return_all:
+        # Apply Noisy-OR per hierarchy
+        section_probs = (
+            pred_df.groupby("Section")["Prob"]
+            .apply(lambda x: noisy_or(x.tolist()))
+            .reset_index(name="Prob")
+            .sort_values(by="Prob", ascending=False)
+            .reset_index(drop=True)
+        )
 
-    # Apply Noisy-OR per hierarchy
-    section_probs = (
-        pred_df.groupby("Section")["Prob"]
-        .apply(lambda x: noisy_or(x.tolist()))
-        .reset_index(name="Prob")
-        .sort_values(by="Prob", ascending=False)
-        .reset_index(drop=True)
-    )
+        division_probs = (
+            pred_df.groupby("Division")["Prob"]
+            .apply(lambda x: noisy_or(x.tolist()))
+            .reset_index(name="Prob")
+            .sort_values(by="Prob", ascending=False)
+            .reset_index(drop=True)
+        )
 
-    division_probs = (
-        pred_df.groupby("Division")["Prob"]
-        .apply(lambda x: noisy_or(x.tolist()))
-        .reset_index(name="Prob")
-        .sort_values(by="Prob", ascending=False)
-        .reset_index(drop=True)
-    )
+        group_probs = pred_df[["Group", "Prob"]].sort_values(by="Prob", ascending=False).reset_index(drop=True)
 
-    group_probs = pred_df[["Group", "Prob"]].sort_values(by="Prob", ascending=False).reset_index(drop=True)
-
-    return (
-        section_probs.rename(columns={"Section": "Id"}),
-        division_probs.rename(columns={"Division": "Id"}),
-        group_probs.rename(columns={"Group": "Id"})
-    )
-
+        return (
+            section_probs.rename(columns={"Section": "Id"}),
+            division_probs.rename(columns={"Division": "Id"}),
+            group_probs.rename(columns={"Group": "Id"}),
+            pred_df
+        )
+    else:
+        return None, None, None, pred_df
