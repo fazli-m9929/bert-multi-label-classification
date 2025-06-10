@@ -2,6 +2,7 @@ import streamlit as st
 from ..inference import (
     predict_sorted,
     compute_hierarchy_probs,
+    THRESHOLD_DEFAULT,
     section_map, division_map, group_map
 )
 from ..utils import load_resources
@@ -52,7 +53,7 @@ def run():
             "Prediction Threshold",
             min_value=0.2,
             max_value=0.8,
-            value=0.5,
+            value=THRESHOLD_DEFAULT,
             step=0.05,
             label_visibility="collapsed"
         )

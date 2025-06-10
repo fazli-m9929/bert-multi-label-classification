@@ -66,7 +66,7 @@ def predict_sorted(
     logits = outputs.logits.squeeze()
     
     probs = torch.sigmoid(logits).cpu() # - 0.2 # A little offset to avoid false positives
-    labels = torch.argwhere(probs > threshold).view(-1)
+    labels = torch.argwhere(probs >= threshold).view(-1)
 
     # Create sorted list of (label, prob, binary prediction)
     sorted_output = sorted(
