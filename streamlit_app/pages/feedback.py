@@ -138,7 +138,13 @@ def run():
             st.markdown("---") # Visual separator
 
             if st.button("✅ Submit Feedback", use_container_width=True):
-                feedback_data = {text_id: []}
+                feedback_data = {
+                    text_id: {
+                        "full_text": text,
+                        "feedback": [],
+                        "labels": [label_dict_inv[p[0]] for p in predictions],
+                        }
+                }
                 # Iterate through the results that were actually shown to the user
                 for _, row in results_df.iterrows():
                     group_name = row['Group']
@@ -146,7 +152,7 @@ def run():
                     key = f"{text_id}_{label_dict_inv[group_name]}"
                     if key in st.session_state:
                         if st.session_state[key]:
-                            feedback_data[text_id].append(label_dict_inv[group_name])
+                            feedback_data[text_id]["feedback"].append(label_dict_inv[group_name])
                 
                 # In a real app, you would save `feedback_data` to your database here.
                 with st.spinner("Submitting feedback..."):
@@ -155,7 +161,7 @@ def run():
                     st.json(feedback_data)
 
                 # Reset the state to go back to the starting screen
-                time.sleep(1)
+                time.sleep(10)
                 st.session_state.sample_fetched = False
                 st.rerun()
 
