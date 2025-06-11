@@ -15,6 +15,15 @@ def main():
         layout='wide',
     )
 
+    st.markdown("""
+        <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+        </style>
+    """, unsafe_allow_html=True)
+
+    
     # Define available pages and their corresponding run functions
     pages = {
         "🏠 Home": home_page,

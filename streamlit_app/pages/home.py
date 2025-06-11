@@ -21,11 +21,8 @@ def run():
 
         Use the sidebar on the left to:
         - Run the classifier demo
-        - View other components (coming soon)
-        
+    
     """)
-
-    # Optional expandable help/instructions section
     with st.expander("ℹ️ How it works"):
         st.markdown(
         """
@@ -34,6 +31,23 @@ def run():
         - You can set a prediction **threshold** to control which labels are returned.
         """
     )
+    
+    st.markdown("""
+        - Feedback the model's performance on real data.
+        
+    """)
+    with st.expander("ℹ️ How to Use the Feedback Page"):
+        st.markdown(
+            """
+            1. From the sidebar on the left, select the **🧾 Feedback** page.
+            2. Click the **🔄 Fetch a New Sample for Review** button to load a text sample with model predictions.
+            3. Carefully read the displayed text.
+            4. Review the predicted labels and check the boxes for all labels you think are correct.
+            5. After selecting the correct labels, press the **✅ Submit Feedback** button.
+            6. Your feedback will be saved, and the text will be marked as reviewed.
+            7. You can fetch new samples and repeat the process to help improve model accuracy and performance.
+            """
+        )
 
     # Footer
     st.markdown("---")

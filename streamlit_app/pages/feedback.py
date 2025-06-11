@@ -98,6 +98,7 @@ def run():
             <style>
                 .stCheckbox {{
                     direction: rtl;
+                    font-family: 'Shabnam', sans-serif;
                 }}
             </style>
             """,
@@ -155,6 +156,7 @@ def run():
                                 group_prob = row['Prob']
                                 
                                 unique_key = f'{text_id}_{label_dict_inv[group_name]}'
+                                
                                 st.checkbox("&nbsp;صحیح است؟", key=unique_key)
                                 
                                 st.markdown(f"""
@@ -167,62 +169,74 @@ def run():
             st.info("Review the predictions and check the boxes for all correct labels. When you're done, press **✅ Submit Feedback**.")
             st.divider()
 
+            # Ask for confirmation
             if st.button("✅ Submit Feedback", use_container_width=True):
-                feedback_data = {
-                    text_id: {
-                        "full_text": text,
-                        "feedback": [],
-                        "labels": [label_dict_inv[p[0]] for p in predictions],
-                        }
-                }
-                # Iterate through the results that were actually shown to the user
-                for _, row in results_df.iterrows():
-                    group_name = row['Group']
-                    # Reconstruct the key to look it up in session_state
-                    key = f"{text_id}_{label_dict_inv[group_name]}"
-                    if key in st.session_state:
-                        if st.session_state[key]:
-                            feedback_data[text_id]["feedback"].append(label_dict_inv[group_name])
-                
-                # Submit feedback data into database here.
-                with st.spinner("Submitting feedback to database..."):
-                    try:
-                        with conn.session as session:
-                            # Insert or update feedback
-                            insert_query = sqlalchemy.text("""
-                                INSERT INTO dbo.feedback (id, full_text, predicted_labels, feedback_labels)
-                                VALUES (:id, :full_text, :predicted_labels, :feedback_labels)
-                                ON CONFLICT (id) DO UPDATE
-                                SET full_text = EXCLUDED.full_text,
-                                    predicted_labels = EXCLUDED.predicted_labels,
-                                    feedback_labels = EXCLUDED.feedback_labels;
-                            """)
-                            session.execute(insert_query, {
-                                "id": int(text_id),
-                                "full_text": feedback_data[text_id]["full_text"],
-                                "predicted_labels": feedback_data[text_id]["labels"],
-                                "feedback_labels": feedback_data[text_id]["feedback"]
-                            })
-                            
-                            # Mark the original activity as reviewed
-                            update_query = sqlalchemy.text("""
-                                UPDATE dbo.activity
-                                SET is_reviewed = TRUE
-                                WHERE id = :id;
-                            """)
-                            session.execute(update_query, {"id": int(text_id)})
-                            
-                            session.commit()
-                    except Exception as e:
-                        st.error(f"Database error")
-                        time.sleep(5)
-                        st.session_state.sample_fetched = False
-                        st.rerun()
+                st.session_state.confirm_submit = True
 
-                # Reset the state to go back to the starting screen
-                # time.sleep(10)
-                st.session_state.sample_fetched = False
-                st.rerun()
+            # Show confirmation prompt
+            if st.session_state.get("confirm_submit", False):
+                st.warning("Are you sure you want to submit this feedback?")
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    if st.button("✅ Yes, Submit", key="confirm_yes", use_container_width=True):
+                        feedback_data = {
+                            text_id: {
+                                "full_text": text,
+                                "feedback": [],
+                                "labels": [label_dict_inv[p[0]] for p in predictions],
+                            }
+                        }
+                        # Iterate through the results that were actually shown to the user
+                        for _, row in results_df.iterrows():
+                            group_name = row['Group']
+                            key = f"{text_id}_{label_dict_inv[group_name]}"
+                            if key in st.session_state and st.session_state[key]:
+                                feedback_data[text_id]["feedback"].append(label_dict_inv[group_name])
+
+                        with st.spinner("Submitting feedback to database..."):
+                            try:
+                                with conn.session as session:
+                                    # Insert feedback
+                                    insert_query = sqlalchemy.text("""
+                                        INSERT INTO dbo.feedback (id, full_text, predicted_labels, feedback_labels)
+                                        VALUES (:id, :full_text, :predicted_labels, :feedback_labels)
+                                        ON CONFLICT (id) DO UPDATE
+                                        SET full_text = EXCLUDED.full_text,
+                                            predicted_labels = EXCLUDED.predicted_labels,
+                                            feedback_labels = EXCLUDED.feedback_labels;
+                                    """)
+                                    session.execute(insert_query, {
+                                        "id": int(text_id),
+                                        "full_text": feedback_data[text_id]["full_text"],
+                                        "predicted_labels": feedback_data[text_id]["labels"],
+                                        "feedback_labels": feedback_data[text_id]["feedback"]
+                                    })
+
+                                    # Update activity table
+                                    update_query = sqlalchemy.text("""
+                                        UPDATE dbo.activity
+                                        SET is_reviewed = TRUE
+                                        WHERE id = :id;
+                                    """)
+                                    session.execute(update_query, {"id": int(text_id)})
+
+                                    session.commit()
+
+                                st.success("Feedback submitted successfully!")
+                            except Exception as e:
+                                st.error(f"Database error: {e}")
+                                time.sleep(5)
+                            
+                            # Reset everything after submission or error
+                            st.session_state.sample_fetched = False
+                            st.session_state.confirm_submit = False
+                            st.rerun()
+
+                with col2:
+                    if st.button("❌ Cancel", key="confirm_no", use_container_width=True):
+                        st.session_state.confirm_submit = False
+                        st.rerun()
 
     else:
         # This block of code runs before the button is clicked.
