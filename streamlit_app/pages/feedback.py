@@ -8,6 +8,7 @@ from ..inference import (
     group_dict, label_dict_inv
 )
 import time
+import sqlalchemy
 
 # Page sidebar description
 description = (
@@ -32,16 +33,46 @@ def run():
     # This runs only once per session and sets up our "memory".
     if 'sample_fetched' not in st.session_state:
         st.session_state.sample_fetched = False
+        st.session_state.text_id = None
         st.session_state.text = ""
         st.session_state.predictions = []
+        st.session_state.existing_feedback = set()
+        
+    # Uses the credentials from .streamlit/secrets.toml to connect to db
+    conn = st.connection("postgresql", type="sql")
         
     # Load cached model/tokenizer
     tokenizer, model = load_resources()
     
     if st.button("🔄 Fetch a New Sample for Review", use_container_width=True):
         # The button's only job is to get data and save it to our "memory".
-        st.session_state.text_id = 12345
-        st.session_state.text = 'ارایه کلیه خدمات مهندسی کشاورزی شامل مشاوره اجرا نظارت بر اجرای انواع طرحهای ابیاری قطره ای بارانی تحت فشار و برقی کردن چاه های کشاورزی جهت بهبود عملیات زراعی در مزارع کشاورزی و باغات و تسطیح و اماده سازی و ابخیزداری و زهکشی کلیه زمینهای کشاورزی باغداری ایجاد فضای سبز گلخانه های فضای ازاد تهیه تولید تکثیر و پرورش گلهای اپارتمانی و انواع نهال تهیه تولید خرید فروش بسته بندی واردات صادرات انواع کودهای شیمیایی انواع بذر و نشا و کمپوست و سموم نباتی و ماشین الات کشاورزی و دامپروری ارایه خدمات مشاوره در زمینه بهبود عملیات زراعی و باغداری شناسایی و ردیابی افات زراعی و از بین بردن این افات بصورت علمی شرکت در مناقصه ها و مزایده های دولتی و شخصی اخذ نمایندگی از شرکتهای داخلی و خارجی انجام کلیه امور بازرگانی شامل واردات صادرات ترخیص حق العمل کاری کلیه کالاهای مجاز از کلیه گمرکات و بنادر کشور و شرکت در مناقصه ها و مزایده های دولتی و شخصی اخذ نمایندگی از شرکتهای داخلی و خارجی انجام کلیه عملیات اجرایی انواع طرحهای مخابراتی تاسیساتی ساختمانی راهسازی و گاز رسانی ابرسانی شهری و روستایی صنعتی شامل حفاری کابل کشی لوله گذاری کانال سازی خاکبرداری و جدول کشی انجام کلیه امور پروژه های ساختمانی مسکونی اسفالت کاری اسکلت سازی و محوطه سازی و تخریب و خاکبرداری خاکریزی و پی کنی دیوار چینی کلیه امور نقشه کشی (Gps – GPRS) کلیه امور اسنادی (خدمات اسنادی قبض انبار منطقه ویژه اصلاحیه مانیفست صورتحساب مجوز خروج کالا (بیجک) تسویه و صورت مجالس شناور صورت وضعیت خروج شناور'
+        
+        # The fetch query
+        query = """
+            SELECT id, companyactivity FROM dbo.activity
+            WHERE 	labels3 is not null AND 
+                    labels3 not like '%[]%' AND 
+                    is_reviewed is False
+            ORDER BY RANDOM()
+            LIMIT 1;
+        """
+        
+        # Fallback if the query fails
+        try:
+            sample_df = conn.query(query, ttl=0) 
+            if not sample_df.empty:
+                st.session_state.text_id = sample_df.iloc[0]['id']
+                st.session_state.text = sample_df.iloc[0]['companyactivity']
+            else:
+                st.warning("No new samples to review!")
+                time.sleep(5)
+                st.session_state.sample_fetched = False
+                st.rerun()
+        except Exception as e:
+            st.error(f"Database Error! retry after 5 seconds.")
+            time.sleep(5)
+            st.session_state.sample_fetched = False
+            st.rerun()
         
         # Run model inference
         with st.spinner("Running inference..."):
@@ -129,13 +160,12 @@ def run():
                                 st.markdown(f"""
                                 <div style="direction: rtl; font-family: \'Shabnam\', sans-serif;">
                                     <b>{group_dict[group_name]}</b><br>
-                                    <small>احتمال: {group_prob:.2f}</small>
                                 </div>
                                 """, unsafe_allow_html=True)
                     st.divider()
             
             st.info("Review the predictions and check the boxes for all correct labels. When you're done, press **✅ Submit Feedback**.")
-            st.markdown("---") # Visual separator
+            st.divider()
 
             if st.button("✅ Submit Feedback", use_container_width=True):
                 feedback_data = {
@@ -154,14 +184,43 @@ def run():
                         if st.session_state[key]:
                             feedback_data[text_id]["feedback"].append(label_dict_inv[group_name])
                 
-                # In a real app, you would save `feedback_data` to your database here.
-                with st.spinner("Submitting feedback..."):
-                    st.success("Feedback submitted successfully!")
-                    st.write("Storing feedbacks to database")
-                    st.json(feedback_data)
+                # Submit feedback data into database here.
+                with st.spinner("Submitting feedback to database..."):
+                    try:
+                        with conn.session as session:
+                            # Insert or update feedback
+                            insert_query = sqlalchemy.text("""
+                                INSERT INTO dbo.feedback (id, full_text, predicted_labels, feedback_labels)
+                                VALUES (:id, :full_text, :predicted_labels, :feedback_labels)
+                                ON CONFLICT (id) DO UPDATE
+                                SET full_text = EXCLUDED.full_text,
+                                    predicted_labels = EXCLUDED.predicted_labels,
+                                    feedback_labels = EXCLUDED.feedback_labels;
+                            """)
+                            session.execute(insert_query, {
+                                "id": int(text_id),
+                                "full_text": feedback_data[text_id]["full_text"],
+                                "predicted_labels": feedback_data[text_id]["labels"],
+                                "feedback_labels": feedback_data[text_id]["feedback"]
+                            })
+                            
+                            # Mark the original activity as reviewed
+                            update_query = sqlalchemy.text("""
+                                UPDATE dbo.activity
+                                SET is_reviewed = TRUE
+                                WHERE id = :id;
+                            """)
+                            session.execute(update_query, {"id": int(text_id)})
+                            
+                            session.commit()
+                    except Exception as e:
+                        st.error(f"Database error")
+                        time.sleep(5)
+                        st.session_state.sample_fetched = False
+                        st.rerun()
 
                 # Reset the state to go back to the starting screen
-                time.sleep(10)
+                # time.sleep(10)
                 st.session_state.sample_fetched = False
                 st.rerun()
 
